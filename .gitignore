@@ -1,0 +1,6 @@
+sos-dataset.rar
+dataset/
+__pycache__/
+*.pth
+.claude
+*.log
