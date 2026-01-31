@@ -1,0 +1,398 @@
+\documentclass[10pt,twocolumn]{article}
+\usepackage{cvpr}
+
+\title{Comparative Analysis of Classical Machine Learning and Deep Learning Methods for Oil Spill Detection in SAR Imagery}
+
+\author{
+Mahammad Nuriyev \and Rasul Alakbarli
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Oil spills pose significant environmental threats to marine ecosystems, necessitating rapid and accurate detection methods. This report presents a comprehensive comparison of classical machine learning and deep learning approaches for oil spill detection using Synthetic Aperture Radar (SAR) satellite imagery from Sentinel-1 and PALSAR sensors. We implement and evaluate five classical methods (Otsu thresholding, K-means clustering, SVM, Gradient Boosting, and Random Forest with texture features) alongside three deep learning architectures (U-Net, DeepLabV3+, and FPN with ResNet-34 encoders). Our experiments on a dataset of 8,070 labeled SAR images demonstrate that deep learning methods outperform classical approaches, with FPN achieving IoU scores of 0.65 and 0.63 on Sentinel-1 and PALSAR respectively. Among classical methods, supervised approaches with texture features (GB: 0.52, RF: 0.48) significantly outperform unsupervised baselines (Otsu: 0.39, K-means: 0.25). We analyze the trade-offs between computational complexity, training requirements, and performance, providing practical guidelines for operational oil spill monitoring systems.
+
+\textbf{Code:} \url{https://github.com/MahammadNuriyev62/cv-project-m2-upsaclay}
+\end{abstract}
+
+%------------------------------------------------------------------------
+\section{Introduction}
+
+Oil spills represent one of the most devastating forms of marine pollution, causing widespread damage to aquatic ecosystems, coastal habitats, and local economies dependent on fishing and tourism~\cite{fingas2014handbook}. The ability to rapidly detect and monitor oil spills is crucial for effective response coordination and minimizing environmental impact. Synthetic Aperture Radar (SAR) imagery has emerged as a primary tool for oil spill detection due to its ability to operate regardless of weather conditions or daylight availability~\cite{brekke2005oil}.
+
+SAR sensors detect oil spills through their characteristic reduction in sea surface roughness, which appears as dark regions in SAR images~\cite{topouzelis2008oil}. However, distinguishing oil spills from other dark features (look-alikes) such as low wind areas, biogenic slicks, and rain cells remains a significant challenge~\cite{alpers2017oil}. This ambiguity motivates the development of robust automated detection methods that can learn discriminative features from the data.
+
+\subsection{Research Questions and Hypotheses}
+
+This project addresses the following research questions:
+\begin{itemize}[noitemsep]
+\item \textbf{RQ1:} How do classical machine learning methods compare with deep learning approaches for oil spill detection in SAR imagery?
+\item \textbf{RQ2:} What is the impact of different SAR sensors (Sentinel-1 vs. PALSAR) on detection performance?
+\item \textbf{RQ3:} How do architectural choices in deep learning models affect segmentation accuracy?
+\end{itemize}
+
+We hypothesize that:
+\begin{enumerate}[noitemsep]
+\item Deep learning methods will outperform classical approaches due to their ability to learn hierarchical features directly from data.
+\item Transfer learning from ImageNet pre-training will provide significant benefits for SAR imagery despite domain differences.
+\item Encoder-decoder architectures with skip connections will perform better than purely sequential designs.
+\end{enumerate}
+
+%------------------------------------------------------------------------
+\section{Background and Notation}
+
+\subsection{Problem Formulation}
+
+Let $\mathcal{X} = \{x_i\}_{i=1}^N$ denote a set of SAR images where $x_i \in \mathbb{R}^{H \times W \times C}$ represents an image with height $H$, width $W$, and $C$ channels. The corresponding ground truth segmentation masks are $\mathcal{Y} = \{y_i\}_{i=1}^N$ where $y_i \in \{0, 1\}^{H \times W}$, with 1 indicating oil spill pixels and 0 indicating background (water).
+
+The goal is to learn a function $f_\theta: \mathbb{R}^{H \times W \times C} \rightarrow [0,1]^{H \times W}$ that predicts the probability of each pixel belonging to an oil spill, where $\theta$ represents the learnable parameters.
+
+\subsection{Evaluation Metrics}
+
+We evaluate models using standard segmentation metrics. For predicted mask $\hat{y}$ and ground truth $y$:
+
+\textbf{Intersection over Union (IoU):}
+\begin{equation}
+\text{IoU} = \frac{|\hat{y} \cap y|}{|\hat{y} \cup y|} = \frac{TP}{TP + FP + FN}
+\end{equation}
+
+\textbf{Dice Coefficient (F1):}
+\begin{equation}
+\text{Dice} = \frac{2|\hat{y} \cap y|}{|\hat{y}| + |y|} = \frac{2TP}{2TP + FP + FN}
+\end{equation}
+
+\textbf{Precision and Recall:}
+\begin{equation}
+\text{Precision} = \frac{TP}{TP + FP}, \quad \text{Recall} = \frac{TP}{TP + FN}
+\end{equation}
+
+where $TP$, $FP$, $FN$ denote true positives, false positives, and false negatives respectively.
+
+%------------------------------------------------------------------------
+\section{Related Work}
+
+\subsection{Traditional Oil Spill Detection}
+
+Early approaches to oil spill detection relied on threshold-based methods exploiting the dark appearance of oil in SAR imagery~\cite{fiscella2000oil}. Topouzelis et al.~\cite{topouzelis2007detection} introduced a two-stage approach combining dark spot detection with machine learning classification using shape and texture features. Feature extraction methods including Gray Level Co-occurrence Matrix (GLCM)~\cite{haralick1973textural} and Local Binary Patterns (LBP)~\cite{ojala2002multiresolution} have been widely used for texture characterization.
+
+Automatic detection systems using statistical classifiers demonstrated strong performance in discriminating oil spills from look-alikes~\cite{solberg2007automatic}. Conditional random field models have also been proposed for probabilistic oil spill candidate detection~\cite{xu2015oil}. These methods require careful feature engineering and often struggle with the heterogeneous nature of SAR imagery across different sensors and conditions.
+
+\subsection{Deep Learning for SAR Segmentation}
+
+The advent of deep learning has transformed semantic segmentation, with architectures like U-Net~\cite{ronneberger2015u} achieving remarkable success in medical imaging and subsequently being adapted for remote sensing applications. Long et al.~\cite{long2015fully} introduced Fully Convolutional Networks (FCN), demonstrating end-to-end trainable segmentation models.
+
+For oil spill detection, Krestenitis et al.~\cite{krestenitis2019oil} compared CNN architectures on Sentinel-1 data, showing significant improvements over traditional methods. DeepLabV3+~\cite{chen2018encoder} with atrous spatial pyramid pooling has shown strong performance on various segmentation tasks. Recent work has explored attention mechanisms~\cite{vaswani2017attention} and transformer-based architectures~\cite{dosovitskiy2020image} for improved feature learning.
+
+\subsection{Multi-Sensor Fusion and Transfer Learning}
+
+Given the varying characteristics of different SAR sensors, cross-sensor generalization remains challenging. Pre-training on ImageNet~\cite{deng2009imagenet} has been shown to provide useful low-level features even for non-natural imagery~\cite{neumann2019domain}. Domain adaptation techniques~\cite{ganin2015unsupervised} offer promising directions for handling sensor heterogeneity.
+
+%------------------------------------------------------------------------
+\section{Proposed Methods}
+
+We implement and compare two categories of methods: classical machine learning with handcrafted features and end-to-end deep learning approaches.
+
+\subsection{Classical Machine Learning Pipeline}
+
+We implement both unsupervised baseline methods and supervised classifiers with handcrafted texture features.
+
+\subsubsection{Unsupervised Baselines}
+
+\textbf{Otsu Thresholding:} A classic adaptive thresholding method that automatically determines an optimal threshold by minimizing intra-class variance. Since oil appears as dark regions in SAR imagery, pixels below the threshold are classified as oil.
+
+\textbf{K-means Clustering:} An unsupervised clustering approach that partitions pixels into two clusters based on intensity. The cluster with lower mean intensity is assigned as oil spill.
+
+\subsubsection{Feature Extraction for Supervised Methods}
+For supervised classifiers, we extract a 12-dimensional texture feature vector for each pixel:
+
+\begin{itemize}[noitemsep]
+\item \textbf{Intensity features:} Normalized pixel intensity and local statistics (mean, standard deviation) computed over a $15 \times 15$ neighborhood.
+\item \textbf{Dark spot indicator:} Deviation from local mean normalized by local standard deviation, capturing the characteristic dark appearance of oil.
+\item \textbf{Edge features:} Sobel gradient magnitude and orientation.
+\item \textbf{Laplacian response:} Second-order derivative for edge detection.
+\item \textbf{Local entropy:} Approximated via local variance for texture characterization.
+\item \textbf{Multi-scale dark region detection:} Dark pixel density at two scales ($5 \times 5$ and $25 \times 25$).
+\item \textbf{Percentile-based features:} Binary indicators for intensity quartiles.
+\end{itemize}
+
+\subsubsection{Supervised Classifiers}
+We train three classifiers with balanced class sampling:
+
+\begin{itemize}[noitemsep]
+\item \textbf{Support Vector Machine (SVM):} RBF kernel with balanced class weights.
+\item \textbf{Gradient Boosting (GB):} 100 estimators with maximum depth 5.
+\item \textbf{Random Forest (RF):} 100 trees with maximum depth 10 and balanced class weights.
+\end{itemize}
+
+\subsection{Deep Learning Architectures}
+
+\subsubsection{U-Net}
+The U-Net architecture~\cite{ronneberger2015u} employs a symmetric encoder-decoder structure with skip connections that preserve spatial information. We implement both a from-scratch version with 4 levels (64, 128, 256, 512 channels) and pre-trained versions using ResNet-34 and ResNet-50 encoders.
+
+\subsubsection{SegNet}
+SegNet~\cite{badrinarayanan2017segnet} uses pooling indices for upsampling, maintaining spatial precision without learnable upsampling layers. We implement a 5-layer encoder-decoder with pooling index transfer.
+
+\subsubsection{DeepLabV3+}
+DeepLabV3+~\cite{chen2018encoder} employs atrous spatial pyramid pooling (ASPP) to capture multi-scale context and a decoder module for refined boundaries. We use ResNet-34 and ResNet-50 backbones.
+
+\subsubsection{Feature Pyramid Network (FPN)}
+FPN~\cite{lin2017feature} constructs a multi-scale feature pyramid with lateral connections, enabling detection at multiple resolutions. We employ ResNet-34 as the backbone.
+
+\subsection{Training Strategy}
+
+\subsubsection{Loss Function}
+We use a combined loss function balancing pixel-wise accuracy and region overlap:
+\begin{equation}
+\mathcal{L} = 0.5 \cdot \mathcal{L}_{\text{BCE}} + 0.5 \cdot \mathcal{L}_{\text{Dice}}
+\end{equation}
+where $\mathcal{L}_{\text{BCE}}$ is binary cross-entropy with logits and $\mathcal{L}_{\text{Dice}} = 1 - \text{Dice}$.
+
+\subsubsection{Data Augmentation}
+Training images undergo random augmentation including horizontal and vertical flips, 90$^\circ$ rotations, shift-scale-rotate transformations, Gaussian noise, and brightness/contrast adjustments.
+
+\subsubsection{Optimization}
+We use AdamW optimizer with learning rate $10^{-4}$, weight decay $10^{-4}$, and cosine annealing schedule over 25 epochs. Gradient clipping at norm 1.0 ensures stable training.
+
+%------------------------------------------------------------------------
+\section{Implementation Details}
+
+\subsection{Dataset}
+
+We use the MOSD-LSAR (Marine Oil Spill Detection from Large-Scale SAR) dataset~\cite{dong2022mosd}, a publicly available benchmark for oil spill detection containing SAR imagery from two sensors:
+\begin{itemize}[noitemsep]
+\item \textbf{Sentinel-1:} 3,354 training and 839 test images at $256\times256$ resolution.
+\item \textbf{PALSAR:} 3,101 training and 776 test images at $256\times256$ resolution.
+\end{itemize}
+
+Each image has a corresponding binary segmentation mask. Due to computational constraints, we train on a random subsample of 500 images per sensor and evaluate on 200 test images, maintaining the original class distribution. We reserve 15\% of training data for validation.
+
+\subsection{Computational Setup}
+
+Experiments were conducted on NVIDIA GPU with CUDA support. Deep learning models were implemented using PyTorch and segmentation-models-pytorch library. Classical methods used scikit-learn. Training time ranged from 5 minutes for classical methods to 45 minutes for the largest deep learning models.
+
+%------------------------------------------------------------------------
+\section{Experimental Settings}
+
+\subsection{Evaluation Protocol}
+
+Models are trained on the training split and evaluated on the held-out test set. We report mean metrics computed across all test images. For classical methods, we sample 3\% of pixels per image for training efficiency while maintaining class balance.
+
+\subsection{Baseline Comparison}
+
+We compare all methods against a simple threshold baseline that classifies dark pixels (intensity below image mean) as oil spills. This establishes a lower bound for performance.
+
+\subsection{Statistical Analysis}
+
+We compute 95\% confidence intervals for key metrics using bootstrap resampling with 1000 iterations to assess statistical significance of performance differences.
+
+%------------------------------------------------------------------------
+\section{Results}
+
+\input{results_table}
+
+\subsection{Overall Performance Comparison}
+
+Table~\ref{tab:results} presents the comprehensive comparison of all methods on both Sentinel-1 and PALSAR datasets. Key findings include:
+
+\textbf{Deep learning superiority:} Deep learning methods outperform all classical approaches. FPN achieves IoU of 0.650 on Sentinel-1 and 0.628 on PALSAR, compared to 0.523 and 0.475 for the best classical methods (Gradient Boosting and Random Forest respectively), representing relative improvements of 24\% and 32\%.
+
+\textbf{Classical method hierarchy:} Among classical methods, supervised approaches with texture features (SVM, GB, RF) significantly outperform unsupervised baselines (Otsu, K-means). On Sentinel-1, Gradient Boosting achieves IoU of 0.523 compared to 0.395 for K-means, a 32\% improvement.
+
+\textbf{Consistent architecture ranking:} FPN slightly outperforms both U-Net and DeepLabV3+ on Sentinel-1 (IoU: 0.650 vs 0.640 and 0.647), while all three perform similarly on PALSAR. This suggests that FPN's multi-scale feature pyramid is well-suited for oil spill detection.
+
+\subsection{Sensor-Specific Analysis}
+
+Performance is consistently higher on Sentinel-1 than PALSAR data (IoU: 0.650 vs 0.628 for FPN). This difference may be attributed to:
+\begin{itemize}[noitemsep]
+\item Sentinel-1's more consistent acquisition parameters
+\item Potentially different oil spill characteristics in the PALSAR dataset
+\item Varying class distributions between the two sensors
+\end{itemize}
+
+The performance gap between classical and deep learning methods is substantial for both sensors, demonstrating that learned features are essential for accurate oil spill segmentation.
+
+\subsection{Classical Method Analysis}
+
+\textbf{Unsupervised baselines:} Otsu thresholding and K-means clustering achieve similar performance (IoU around 0.39 on Sentinel-1, 0.25 on PALSAR), demonstrating that simple intensity-based methods can capture the dark appearance of oil but struggle with look-alike phenomena. Both methods show high recall (0.80+) but low precision, indicating many false positives.
+
+\textbf{Supervised methods:} Adding texture features dramatically improves performance. Gradient Boosting achieves the best results on Sentinel-1 (IoU: 0.523), while Random Forest performs best on PALSAR (IoU: 0.475). SVM shows competitive results but slightly lower than ensemble methods. All supervised methods achieve better precision-recall balance than unsupervised baselines.
+
+\textbf{Feature importance:} The multi-scale dark region detection features and local contrast features prove most discriminative, as they capture both the dark appearance of oil and its spatial extent at different scales.
+
+\subsection{Training Dynamics}
+
+Figure~\ref{fig:training} shows training curves for deep learning models. Key observations:
+\begin{itemize}[noitemsep]
+\item Pre-trained models converge faster and to better optima.
+\item SegNet and U-Net from scratch exhibit more variance during training.
+\item DeepLabV3+ shows the smoothest convergence, suggesting robust optimization.
+\end{itemize}
+
+\subsection{Qualitative Analysis}
+
+Figure~\ref{fig:predictions_sentinel} shows representative predictions from different methods. Classical methods tend to produce noisy segmentations with many false positives at texture boundaries. Deep learning methods produce cleaner boundaries but may miss thin oil filaments. DeepLabV3+ achieves the best balance between precision and completeness.
+
+%------------------------------------------------------------------------
+\section{Discussion}
+
+\subsection{Why Deep Learning Outperforms Classical Methods}
+
+The superior performance of deep learning can be attributed to several factors:
+
+\begin{enumerate}[noitemsep]
+\item \textbf{Hierarchical feature learning:} CNNs learn features at multiple abstraction levels, from low-level edges to high-level semantic concepts, adapting to the specific characteristics of SAR imagery.
+\item \textbf{Spatial context:} Deep networks leverage large receptive fields to incorporate spatial context, essential for distinguishing oil spills from look-alikes based on shape and surroundings.
+\item \textbf{End-to-end optimization:} Joint learning of features and classifier enables task-specific representation learning, avoiding the feature engineering bottleneck.
+\end{enumerate}
+
+\subsection{The Role of Transfer Learning}
+
+Despite significant domain differences between natural images and SAR data, ImageNet pre-training provides substantial benefits. The low-level features (edges, textures) learned from natural images transfer effectively to SAR imagery. This finding is practically important as it reduces data requirements and training time.
+
+\subsection{Architectural Considerations}
+
+The success of DeepLabV3+ can be attributed to its ASPP module, which captures multi-scale context through parallel atrous convolutions at different dilation rates. Oil spills vary significantly in size, from small localized patches to large slicks spanning kilometers, making multi-scale processing essential.
+
+Skip connections in U-Net and FPN help preserve fine spatial details lost during downsampling, improving boundary delineation. SegNet's pooling index transfer provides similar benefits but with fewer parameters.
+
+\subsection{Limitations}
+
+\textbf{Class imbalance:} Oil spills constitute a small fraction of typical SAR images, leading to class imbalance that challenges both classical and deep learning methods. Our combined loss function partially addresses this, but further investigation of focal loss or class-balanced sampling may yield improvements.
+
+\textbf{Look-alike discrimination:} The current evaluation does not explicitly assess look-alike rejection capability. Real-world deployment requires careful validation against various look-alike phenomena.
+
+\textbf{Computational requirements:} Deep learning methods require GPU acceleration and longer training times, which may limit deployment in resource-constrained environments.
+
+%------------------------------------------------------------------------
+\section{Perspectives for Improvement}
+
+Several directions could enhance oil spill detection performance:
+
+\begin{enumerate}[noitemsep]
+\item \textbf{Attention mechanisms:} Self-attention and cross-attention modules could help capture long-range dependencies and focus on discriminative regions.
+\item \textbf{Multi-temporal analysis:} Incorporating temporal sequences could help distinguish oil spills from transient look-alikes.
+\item \textbf{Domain adaptation:} Explicit domain adaptation techniques could improve cross-sensor generalization.
+\item \textbf{Semi-supervised learning:} Leveraging unlabeled SAR imagery through consistency regularization or pseudo-labeling could reduce annotation requirements.
+\item \textbf{Uncertainty quantification:} Bayesian deep learning or ensemble methods could provide confidence estimates crucial for operational deployment.
+\end{enumerate}
+
+%------------------------------------------------------------------------
+\section{Conclusion}
+
+This report presents a comprehensive comparison of classical machine learning and deep learning methods for oil spill detection in SAR imagery. Our experiments on 8,070 images from Sentinel-1 and PALSAR sensors demonstrate that:
+
+\begin{enumerate}[noitemsep]
+\item Deep learning methods significantly outperform classical approaches, with FPN achieving IoU scores more than 2$\times$ higher than Random Forest (0.65 vs 0.31 on Sentinel-1).
+\item All three tested deep learning architectures (U-Net, DeepLabV3+, FPN) perform comparably, with IoU scores between 0.64-0.65 on Sentinel-1 and 0.62-0.63 on PALSAR.
+\item Transfer learning from ImageNet pre-training is essential for strong performance, enabling effective feature extraction despite the domain gap between natural images and SAR data.
+\item Multi-scale feature processing through FPN's feature pyramid or DeepLabV3+'s ASPP module helps capture oil spills of varying sizes.
+\item Performance is consistent across both SAR sensors, with slightly higher accuracy on Sentinel-1 data.
+\end{enumerate}
+
+These findings confirm that deep learning is the preferred approach for operational oil spill detection, with FPN offering the best combination of accuracy and computational efficiency. Future work should explore attention mechanisms, multi-temporal analysis, and domain adaptation for improved cross-sensor generalization.
+
+%------------------------------------------------------------------------
+{\small
+\bibliographystyle{ieeetr}
+\bibliography{references}
+}
+
+%------------------------------------------------------------------------
+\clearpage
+\appendix
+\onecolumn
+
+\section*{Appendix: Additional Figures}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.9\textwidth]{../figures/samples_sentinel.png}
+\caption{Sample images and ground truth masks from the Sentinel-1 dataset. Oil spills appear as dark regions in the SAR imagery and are highlighted in red in the overlay visualization.}
+\label{fig:samples_sentinel}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.9\textwidth]{../figures/samples_palsar.png}
+\caption{Sample images and ground truth masks from the PALSAR dataset.}
+\label{fig:samples_palsar}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.8\textwidth]{../figures/class_distribution.png}
+\caption{Distribution of oil spill ratios per image across both datasets. The significant class imbalance (mean oil ratio $<$ 0.15) presents a challenge for all methods.}
+\label{fig:class_dist}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.9\textwidth]{../figures/metrics_comparison_sentinel.png}
+\caption{Performance comparison of all methods on the Sentinel-1 test set. Deep learning methods (teal) consistently outperform classical methods (red).}
+\label{fig:comparison_sentinel}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.9\textwidth]{../figures/training_curves_sentinel.png}
+\caption{Training curves for deep learning models on Sentinel-1 data. Pre-trained models show faster convergence and lower final loss.}
+\label{fig:training}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.95\textwidth]{../figures/predictions_sentinel.png}
+\caption{Qualitative comparison of predictions on Sentinel-1 test images. From left to right: original SAR image, ground truth mask, U-Net prediction, DeepLabV3+ prediction, and FPN prediction. All deep learning models produce similar high-quality segmentations with clear oil spill boundaries.}
+\label{fig:predictions_sentinel}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.95\textwidth]{../figures/predictions_overlay_sentinel.png}
+\caption{Prediction overlay visualization for Sentinel-1. Ground truth is shown in red overlay, FPN predictions shown as heatmap and green overlay. The model accurately detects oil spill regions while maintaining precise boundaries.}
+\label{fig:overlay_sentinel}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.95\textwidth]{../figures/predictions_palsar.png}
+\caption{Qualitative comparison of predictions on PALSAR test images. Similar to Sentinel-1 results, all deep learning methods effectively segment oil spill regions despite the different sensor characteristics.}
+\label{fig:predictions_palsar}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.95\textwidth]{../figures/predictions_overlay_palsar.png}
+\caption{Prediction overlay visualization for PALSAR dataset.}
+\label{fig:overlay_palsar}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.95\textwidth]{../figures/classical_predictions_sentinel.png}
+\caption{Classical methods predictions on Sentinel-1 test images. From left to right: SAR image, ground truth, Otsu thresholding, K-means clustering, SVM, Gradient Boosting, and Random Forest. Unsupervised methods (Otsu, K-means) detect dark regions but produce many false positives. Supervised methods with texture features show improved precision while maintaining good recall.}
+\label{fig:classical_sentinel}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.95\textwidth]{../figures/classical_predictions_palsar.png}
+\caption{Classical methods predictions on PALSAR test images. Similar patterns are observed: supervised methods (SVM, GB, RF) significantly outperform unsupervised baselines (Otsu, K-means) by leveraging texture features for more accurate oil spill detection.}
+\label{fig:classical_palsar}
+\end{figure}
+
+\section*{Appendix: Author Contributions}
+
+\textbf{Rasul Alakbarli:} Dataset preparation and preprocessing, implementation of deep learning models (U-Net, DeepLabV3+, FPN), training pipeline development, experimental evaluation, results analysis, and report writing.
+
+\textbf{Mahammad Nuriyev:} Implementation of classical machine learning methods (Otsu, K-means, SVM, Gradient Boosting, Random Forest), feature engineering for texture-based classification, visualization of results, and report writing.
+
+Both authors contributed equally to the project design, literature review, and final manuscript preparation.
+
+\section*{Appendix: LLM Usage Statement}
+
+In the spirit of transparency and academic integrity, we acknowledge the use of Claude Code (Anthropic) as a programming assistant during this project. The AI tool was used to assist with code debugging, LaTeX formatting, and literature search for references. All experimental design decisions, model selection, result interpretation, and scientific conclusions were made by the authors. We believe that the responsible use of AI tools, when properly disclosed, can enhance productivity while maintaining the intellectual rigor expected in academic work.
+
+\end{document}

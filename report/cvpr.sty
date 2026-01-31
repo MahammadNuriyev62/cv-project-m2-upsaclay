@@ -1,0 +1,79 @@
+% ---------------------------------------------------------------
+% Modified CVPR LaTeX Template
+% ---------------------------------------------------------------
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{cvpr}[2024/01/01 CVPR Style]
+
+% Page layout
+\usepackage[letterpaper, margin=1in, columnsep=0.2in]{geometry}
+
+% Fonts and encoding
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{times}
+
+% Math
+\usepackage{amsmath,amssymb,amsfonts}
+
+% Graphics
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{subfig}
+
+% Tables
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+
+% Colors
+\usepackage{xcolor}
+\definecolor{cvprblue}{RGB}{0, 101, 165}
+
+% Hyperlinks
+\usepackage[breaklinks=true,bookmarks=false,colorlinks=true,linkcolor=cvprblue,citecolor=cvprblue,urlcolor=cvprblue]{hyperref}
+
+% Algorithms
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+% Misc
+\usepackage{microtype}
+\usepackage{enumitem}
+
+% Section formatting
+\usepackage{titlesec}
+\titleformat{\section}{\normalfont\large\bfseries}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\normalfont\normalsize\bfseries}{\thesubsection.}{0.5em}{}
+\titleformat{\subsubsection}{\normalfont\normalsize\itshape}{\thesubsubsection.}{0.5em}{}
+
+% Abstract formatting
+\renewenvironment{abstract}
+{\small\quotation\noindent\textbf{Abstract---}}
+{\endquotation}
+
+% Caption formatting
+\usepackage{caption}
+\captionsetup{font=small,labelfont=bf}
+
+% References
+\usepackage{cite}
+
+% Title formatting
+\makeatletter
+\def\@maketitle{%
+  \newpage
+  \null
+  \vskip 0.5em%
+  \begin{center}%
+    {\LARGE \@title \par}%
+    \vskip 1.0em%
+    {\large
+      \lineskip .5em%
+      \begin{tabular}[t]{c}%
+        \@author
+      \end{tabular}\par}%
+  \end{center}%
+  \par
+  \vskip 1em}
+\makeatother
