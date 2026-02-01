@@ -3,4 +3,5 @@ dataset/
 __pycache__/
 *.pth
 .claude
-*.log*.sh
+*.log
+*.sh
